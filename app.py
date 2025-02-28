@@ -1,6 +1,38 @@
 import pandas as pd
 import streamlit as st
 import altair as alt
+import datetime
+import requests
+import json
+
+# Function to get user IP
+@st.cache_resource
+def get_ip():
+    try:
+        response = requests.get("https://api64.ipify.org?format=json")
+        return response.json().get("ip", "Unknown")
+    except Exception as e:
+        return "Unknown"
+
+# Function to log click events to Google Docs
+LOG_DOC_URL = "https://docs.google.com/document/d/YOUR_GOOGLE_DOC_ID/edit"
+LOG_WEBHOOK = "YOUR_GOOGLE_APPS_SCRIPT_WEBHOOK_URL"
+
+def log_click(link, company):
+    user_ip = get_ip()
+    timestamp = datetime.datetime.now().isoformat()
+    log_entry = {
+        "timestamp": timestamp,
+        "ip": user_ip,
+        "company": company,
+        "link": link
+    }
+    
+    try:
+        requests.post(LOG_WEBHOOK, data=json.dumps(log_entry), headers={"Content-Type": "application/json"})
+    except Exception as e:
+        st.warning("Failed to log event.")
+
 
 
 # Prepare the CSRD DataFrame
@@ -9,39 +41,32 @@ df = (
     .query("verified == 'yes'")
     .rename(columns={
         'SASB industry \n(SICS® Industries)': "industry",
-        })
-    .merge(
-        # Merge Industry-Sector Lookup from separate sheet
-        pd.read_csv(
-            "https://docs.google.com/spreadsheets/d/1Nlyf8Yz_9Fst8rEmQc2IMc-DWLF1fpmBTB7n4FlZwxs/export?format=csv&gid=218767986#gid=218767986"
-            ).rename(columns={
-                "SICS® Industries": "industry",
-                "SICS® Sector": "sector"
-                }
-            ), on="industry", how="left"
-        )
+    })
     .assign(
-        link = lambda x: [f"{y}#name={z}" for y, z in zip(x["link"], x["company"])],
-        company = lambda x: x["company"].str.strip()
-        )
+        link=lambda x: [f"{y}#name={z}" for y, z in zip(x["link"], x["company"])],
+        company=lambda x: x["company"].str.strip()
+    )
     .loc[:, ['company', 'link', 'country', 'sector', 'industry', "publication date", "pages PDF", "auditor"]]
     .dropna()
-    # Merge the standard-counts dataframe
-    .merge(
-        (
-            pd.read_csv("https://docs.google.com/spreadsheets/d/1Vj8yau93kmSs_WqnV5w1V_tdU-JlMo-BV6htDvAv1TI/export?format=csv&gid=1792638779#gid=1792638779")
-            .assign(
-                company = lambda x: x["company"].str.strip()
-                )
-            .query("year == 2024")
-            .drop("pages", axis=1)
-            .drop_duplicates(subset=['company'])
-        ),
-        on=["company"], how="outer", indicator=True
-    )
-    .query("_merge != 'right_only'")
-    .sort_values("publication date", ascending=True)
 )
+
+st.set_page_config(layout="wide", page_title="SRN CSRD Archive", page_icon="srn-icon.png")
+st.markdown("""<style> footer {visibility: hidden;} </style> """, unsafe_allow_html=True)
+
+st.divider()
+try:
+    tab1, tab2 = st.tabs(["List of reports", "Heatmap of topics reported"])
+
+    with tab1:
+        for index, row in df.iterrows():
+            link_text = f"[{row['company']}]({row['link']})"
+            if st.button(link_text, key=f"link_{index}"):
+                log_click(row['link'], row['company'])
+                st.markdown(f"Opening {row['company']}")
+
+except Exception as e:
+    st.error('Error encountered. Check Google Sheet for updates.', icon="🚨")
+
 
 # Set up page and branding
 # st.logo("srn-icon.png", link="https://sustainabilityreportingnavigator.com")
