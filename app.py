@@ -4,6 +4,7 @@ import altair as alt
 import datetime
 import requests
 import json
+import os
 
 # Function to get user IP
 @st.cache_resource
@@ -14,26 +15,54 @@ def get_ip():
     except Exception as e:
         return "Unknown"
 
-# Function to log click events to Google Docs
-LOG_DOC_URL = "https://docs.google.com/document/d/YOUR_GOOGLE_DOC_ID/edit"
-LOG_WEBHOOK = "YOUR_GOOGLE_APPS_SCRIPT_WEBHOOK_URL"
+# Function to log click events to a CSV file in GitHub
+LOG_FILE = "click_logs.csv"
+GITHUB_REPO = "YOUR_GITHUB_REPO"
+GITHUB_TOKEN = "YOUR_GITHUB_TOKEN"
+GITHUB_FILE_PATH = "logs/click_logs.csv"
+
 
 def log_click(link, company):
     user_ip = get_ip()
     timestamp = datetime.datetime.now().isoformat()
-    log_entry = {
-        "timestamp": timestamp,
-        "ip": user_ip,
-        "company": company,
-        "link": link
-    }
+    log_entry = f"{timestamp},{user_ip},{company},{link}\n"
     
-    try:
-        requests.post(LOG_WEBHOOK, data=json.dumps(log_entry), headers={"Content-Type": "application/json"})
-    except Exception as e:
-        st.warning("Failed to log event.")
+    # Append to local log file
+    with open(LOG_FILE, "a") as file:
+        file.write(log_entry)
+    
+    # Upload to GitHub
+    upload_to_github()
 
 
+def upload_to_github():
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        sha = response.json()["sha"]
+        with open(LOG_FILE, "r") as file:
+            content = file.read()
+        encoded_content = content.encode("utf-8").hex()
+        
+        data = {
+            "message": "Update log file",
+            "content": encoded_content,
+            "sha": sha
+        }
+    else:
+        with open(LOG_FILE, "r") as file:
+            content = file.read()
+        encoded_content = content.encode("utf-8").hex()
+        
+        data = {
+            "message": "Create log file",
+            "content": encoded_content
+        }
+    
+    requests.put(url, headers=headers, json=data)
 
 # Prepare the CSRD DataFrame
 df = (
