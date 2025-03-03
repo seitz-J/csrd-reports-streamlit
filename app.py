@@ -341,16 +341,7 @@ try:
 
 import streamlit.components.v1 as components
 
-components.html("""
-<script>
-    function logClick(link) {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", window.location.href);
-        xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-        xhr.send(JSON.stringify({link: link}));
-    }
-</script>
-""")
+
 
 
 except Exception as e:
