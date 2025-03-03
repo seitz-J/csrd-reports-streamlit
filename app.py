@@ -1,12 +1,24 @@
 import pandas as pd
 import streamlit as st
 import altair as alt
-import logging
+import csv
+import datetime
+import os
+import json
 
-logging.basicConfig(filename='click_log.log', level=logging.INFO)
+if st.experimental_get_query_params():
+    raw = st.experimental_get_query_params()
+    if 'link' in raw:
+        log_click(raw['link'][0])
 
+
+# Log link clicks to a CSV file
 def log_click(link):
-    logging.info(f"Clicked link: {link}")
+    with open("click_log.csv", mode="a", newline="") as file:
+        writer = csv.writer(file)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        writer.writerow([timestamp, link])
+
 
 
 # ------------------------------------ SETUP ------------------------------------
@@ -41,10 +53,14 @@ df = (
                 }
             ), on="industry", how="left"
         )
-    .assign(
-        link = lambda x: [f"{y}#name={z}" for y, z in zip(x["link"], x["company"])],
-        company = lambda x: x["company"].str.strip()
-        )
+.assign(
+    link = lambda x: [
+        f'<a href="{y}#name={z}" target="_blank" '
+        f'onclick="window.parent.logClick(\'{y}#name={z}\')">{z}</a>'
+        for y, z in zip(x["link"], x["company"])
+    ],
+    company = lambda x: x["company"].str.strip()
+)
     .loc[:, ['company', 'link', 'country', 'sector', 'industry', "publication date", "pages PDF", "auditor"]]
     .dropna()
     # Merge the standard-counts dataframe
@@ -323,6 +339,18 @@ try:
                     
                     st.altair_chart(heatmap)
 
+import streamlit.components.v1 as components
+
+components.html("""
+<script>
+    function logClick(link) {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", window.location.href);
+        xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+        xhr.send(JSON.stringify({link: link}));
+    }
+</script>
+""")
 
 
 except Exception as e:
