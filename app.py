@@ -339,7 +339,7 @@ try:
                     
                     st.altair_chart(heatmap)
 
-import streamlit.components.v1 as components
+
 
 
 
